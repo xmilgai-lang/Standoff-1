@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Перестрелка</title>
+<style>
+:root{--bg:#eef1f7;--ink:#1b2340;--acc:#e4572e;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141a33;--ink:#eef1f7;--acc:#ff7a52}}
+:root[data-theme="dark"]{--bg:#141a33;--ink:#eef1f7;--acc:#ff7a52}
+html,body{height:100%;margin:0;background:#9fc3e0;font-family:"Trebuchet MS",system-ui,sans-serif;overscroll-behavior:none}
+body{touch-action:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;height:100%;overflow:hidden}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+.hud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;padding:10px 16px;color:#fff;font-weight:700;font-size:19px;text-shadow:0 1px 4px #000a;pointer-events:none}
+#xh{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none;background:
+ linear-gradient(#fff,#fff) 50% 0/2px 7px no-repeat,linear-gradient(#fff,#fff) 50% 100%/2px 7px no-repeat,
+ linear-gradient(#fff,#fff) 0 50%/7px 2px no-repeat,linear-gradient(#fff,#fff) 100% 50%/7px 2px no-repeat;filter:drop-shadow(0 0 2px #000)}
+#hm{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border:3px solid #fff;transform:rotate(45deg);opacity:0;transition:opacity .25s;pointer-events:none}
+#dm{position:absolute;inset:0;background:#d00;opacity:0;transition:opacity .35s;pointer-events:none}
+.b{position:absolute;border-radius:50%;border:3px solid #fff;background:#0007;color:#fff;font:700 15px inherit;font-family:inherit;touch-action:none}
+#fire{right:22px;bottom:26px;width:92px;height:92px;background:#e4572eb0}
+#rl{right:128px;bottom:36px;width:60px;height:60px}
+#ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;background:color-mix(in srgb,var(--bg) 82%,transparent);color:var(--ink)}
+#ov.hide{display:none}
+h1{margin:0;font-size:38px}p{margin:0;max-width:28ch;line-height:1.4}
+#go{font:700 18px inherit;font-family:inherit;color:var(--bg);background:var(--ink);border:0;border-radius:999px;padding:14px 34px}
+button:focus-visible{outline:3px solid var(--acc);outline-offset:3px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="hud"><span>HP <b id="hp">100</b></span><span>Вы <b id="me">0</b> : <b id="bt">0</b> Боты</span><span>Патроны <b id="am">30</b></span></div>
+  <div id="xh"></div><div id="hm"></div><div id="dm"></div>
+  <button class="b" id="rl" aria-label="Перезарядка">R</button>
+  <button class="b" id="fire" aria-label="Огонь">Огонь</button>
+  <div id="ov"><h1 id="t">Перестрелка</h1><p id="m">Слева двигайся, справа води прицел. Кнопка «Огонь» держится. Играем до 10 фрагов.</p><button id="go">В бой</button></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)},wrap=$('wrap');
+var scene=new THREE.Scene();scene.background=new THREE.Color(0x9fc3e0);scene.fog=new THREE.Fog(0x9fc3e0,25,70);
+var cam=new THREE.PerspectiveCamera(75,1,.1,100);scene.add(cam);
+var ren=new THREE.WebGLRenderer({antialias:true});ren.setPixelRatio(Math.min(2,window.devicePixelRatio||1));wrap.insertBefore(ren.domElement,wrap.firstChild);
+function size(){var r=wrap.getBoundingClientRect();ren.setSize(r.width,r.height);cam.aspect=r.width/r.height;cam.updateProjectionMatrix()}
+window.addEventListener('resize',size);size();
+scene.add(new THREE.HemisphereLight(0xffffff,0x8a7a5a,.95));
+var sun=new THREE.DirectionalLight(0xffffff,.6);sun.position.set(10,20,5);scene.add(sun);
+function box(w,h,d,x,y,z,c){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color:c}));m.position.set(x,y,z);scene.add(m);return m}
+var floor=new THREE.Mesh(new THREE.PlaneGeometry(40,40),new THREE.MeshLambertMaterial({color:0xc9b48a}));floor.rotation.x=-Math.PI/2;scene.add(floor);
+var solids=[],cols=[];
+[[0,-20.2,40.8,.4],[0,20.2,40.8,.4],[-20.2,0,.4,40.8],[20.2,0,.4,40.8]].forEach(function(w){solids.push(box(w[2],3,w[3],w[0],1.5,w[1],0x7d8a96))});
+[[-8,-6,4,3,2],[6,-9,3,3,1.5],[0,0,2,6,2.5],[-12,8,5,2,2],[10,6,3,3,2],[-3,-14,6,2,2],[13,-2,2,5,2],[-14,-3,3,3,1.5],[4,12,5,2,2]].forEach(function(c,i){
+  solids.push(box(c[2],c[4],c[3],c[0],c[4]/2,c[1],i%2?0x8a6a3b:0x6f8a6a));cols.push({x:c[0],z:c[1],hx:c[2]/2,hz:c[3]/2});
+});
+var gun=box(.12,.12,.55,.22,-.22,-.45,0x2b2f38);scene.remove(gun);cam.add(gun);
+var spawns=[[-17,-17],[17,-17],[-17,17],[17,17],[0,-17],[0,17],[-17,0],[17,0]];
+function blocked(x,z,r){if(Math.abs(x)>19.5||Math.abs(z)>19.5)return true;
+  for(var i=0;i<cols.length;i++){var c=cols[i];if(x>c.x-c.hx-r&&x<c.x+c.hx+r&&z>c.z-c.hz-r&&z<c.z+c.hz+r)return true}return false}
+function step(o,dx,dz,r){var m=false;if(!blocked(o.x+dx,o.z,r)){o.x+=dx;m=true}if(!blocked(o.x,o.z+dz,r)){o.z+=dz;m=true}return m}
+function far(px,pz){var best=spawns[0],bd=-1;spawns.forEach(function(s){var d=Math.hypot(s[0]-px,s[1]-pz)+Math.random()*6;if(d>bd){bd=d;best=s}});return best}
+
+var bots=[];
+for(var i=0;i<4;i++){
+  var g=new THREE.Group(),mat=function(c){return new THREE.MeshLambertMaterial({color:c})};
+  var body=new THREE.Mesh(new THREE.BoxGeometry(.7,1.1,.45),mat(0xb5382a));body.position.y=1.0;
+  var legs=new THREE.Mesh(new THREE.BoxGeometry(.55,.5,.4),mat(0x3a3f4a));legs.position.y=.25;
+  var head=new THREE.Mesh(new THREE.SphereGeometry(.22,10,8),mat(0xe0b48c));head.position.y=1.8;head.userData.head=true;
+  g.add(body,legs,head);scene.add(g);
+  var b={g:g,hp:100,alive:false,x:0,z:0,wx:0,wz:0,wt:0,cd:1,rs:i};g.userData.bot=b;g.visible=false;bots.push(b);
+}
+var P={x:0,z:17,hp:100,ammo:30,dead:0,reload:0},yaw=0,pitch=0,me=0,bt=0,running=false,kick=0,rcd=0;
+var ray=new THREE.Raycaster(),targets=solids.concat(bots.map(function(b){return b.g}));
+
+function respawnBot(b){var s=far(P.x,P.z);b.x=s[0];b.z=s[1];b.hp=100;b.alive=true;b.wt=0;b.cd=1.2;b.g.rotation.x=0;b.g.visible=true}
+function ui(){$('hp').textContent=Math.max(0,P.hp);$('am').textContent=P.reload>0?'...':P.ammo;$('me').textContent=me;$('bt').textContent=bt}
+function mark(head){var h=$('hm');h.style.borderColor=head?'#f33':'#fff';h.style.opacity=1;setTimeout(function(){h.style.opacity=0},90)}
+function hurt(d){P.hp-=d;var e=$('dm');e.style.transition='none';e.style.opacity=.55;void e.offsetWidth;e.style.transition='opacity .35s';e.style.opacity=0;
+  if(P.hp<=0){bt++;P.dead=2;if(bt>=10)end(false)}ui()}
+function end(win){running=false;$('t').textContent=win?'Победа':'Поражение';$('m').textContent='Счёт '+me+' : '+bt;$('go').textContent='Ещё раз';$('ov').classList.remove('hide')}
+function reset(){me=bt=0;P.x=0;P.z=17;P.hp=100;P.ammo=30;P.dead=0;P.reload=0;yaw=pitch=0;bots.forEach(respawnBot);ui()}
+
+function shoot(){
+  P.ammo--;kick=1;pitch+=.012;yaw+=(Math.random()-.5)*.008;rcd=.11;
+  scene.updateMatrixWorld();ray.far=100;ray.setFromCamera({x:0,y:0},cam);
+  var h=ray.intersectObjects(targets,true)[0];if(!h)return;
+  var g=h.object;while(g&&!g.userData.bot)g=g.parent;if(!g)return;
+  var b=g.userData.bot;if(!b.alive)return;
+  var hd=!!h.object.userData.head;b.hp-=hd?60:25;mark(hd);
+  if(b.hp<=0){b.alive=false;b.rs=3;b.g.rotation.x=-1.5;me++;ui();if(me>=10)end(true)}
+}
+
+var mv={x:0,y:0},sid=null,sx=0,sy=0,lid=null,lx=0,ly=0,firing=false;
+wrap.addEventListener('pointerdown',function(e){
+  if(e.target.closest('button'))return;
+  if(e.clientX<wrap.getBoundingClientRect().width*.45&&sid===null){sid=e.pointerId;sx=e.clientX;sy=e.clientY}
+  else if(lid===null){lid=e.pointerId;lx=e.clientX;ly=e.clientY}
+});
+window.addEventListener('pointermove',function(e){
+  if(e.pointerId===sid){mv.x=Math.max(-1,Math.min(1,(e.clientX-sx)/45));mv.y=Math.max(-1,Math.min(1,(sy-e.clientY)/45))}
+  else if(e.pointerId===lid){yaw-=(e.clientX-lx)*.006;pitch=Math.max(-1.3,Math.min(1.3,pitch-(e.clientY-ly)*.005));lx=e.clientX;ly=e.clientY}
+});
+function up(e){if(e.pointerId===sid){sid=null;mv.x=mv.y=0}if(e.pointerId===lid)lid=null}
+window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);
+var fb=$('fire');fb.addEventListener('pointerdown',function(e){e.preventDefault();firing=true});
+['pointerup','pointercancel','pointerleave'].forEach(function(n){fb.addEventListener(n,function(){firing=false})});
+$('rl').addEventListener('pointerdown',function(e){e.preventDefault();if(P.reload<=0&&P.ammo<30)P.reload=1.3});
+document.addEventListener('contextmenu',function(e){e.preventDefault()});
+
+var last=performance.now();
+function frame(ts){
+  requestAnimationFrame(frame);
+  var dt=Math.min(.05,(ts-last)/1000||0);last=ts;
+  if(running){
+    if(P.dead>0){P.dead-=dt;if(P.dead<=0&&running){var s=far(P.x,P.z);P.x=s[0];P.z=s[1];P.hp=100;P.ammo=30;P.reload=0;ui()}}
+    else{
+      var sp=5*dt,fx=-Math.sin(yaw),fz=-Math.cos(yaw),rx=Math.cos(yaw),rz=-Math.sin(yaw);
+      step(P,(fx*mv.y+rx*mv.x)*sp,(fz*mv.y+rz*mv.x)*sp,.4);
+      rcd-=dt;
+      if(P.reload>0){P.reload-=dt;if(P.reload<=0){P.ammo=30;ui()}}
+      else if(firing&&rcd<=0&&P.ammo>0)shoot(),ui();
+      else if(P.ammo<=0){P.reload=1.3;ui()}
+    }
+    bots.forEach(function(b){
+      if(!b.alive){b.rs-=dt;if(b.rs<=0&&running)respawnBot(b);return}
+      b.wt-=dt;
+      if(b.wt<=0||Math.hypot(b.wx-b.x,b.wz-b.z)<1){b.wx=(Math.random()-.5)*34;b.wz=(Math.random()-.5)*34;b.wt=2+Math.random()*3}
+      var dx=b.wx-b.x,dz=b.wz-b.z,l=Math.hypot(dx,dz)||1;
+      if(!step(b,dx/l*2.8*dt,dz/l*2.8*dt,.45))b.wt=0;
+      var px=P.x-b.x,pz=P.z-b.z,d=Math.hypot(px,pz);
+      b.g.position.set(b.x,0,b.z);b.g.rotation.y=Math.atan2(px,pz);
+      b.cd-=dt;
+      if(b.cd<=0&&d<28&&P.dead<=0){
+        var o=new THREE.Vector3(b.x,1.5,b.z),t=new THREE.Vector3(P.x,1.5,P.z);
+        ray.set(o,t.clone().sub(o).normalize());ray.far=d;
+        if(!ray.intersectObjects(solids).length){b.cd=.5+Math.random()*.4;if(Math.random()<Math.max(.12,.5-d*.014))hurt(9+Math.floor(Math.random()*5))}
+        else b.cd=.2;
+      }
+    });
+  }
+  kick=Math.max(0,kick-dt*10);
+  gun.position.z=-.45+kick*.06;
+  cam.position.set(P.x,P.dead>0?.4:1.6,P.z);cam.rotation.set(pitch,yaw,0,'YXZ');
+  ren.render(scene,cam);
+}
+$('go').addEventListener('click',function(){reset();$('ov').classList.add('hide');running=true});
+bots.forEach(respawnBot);ui();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
